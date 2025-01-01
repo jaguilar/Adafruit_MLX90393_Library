@@ -289,6 +289,27 @@ bool Adafruit_MLX90393::setTrigInt(bool state) {
   return writeRegister(MLX90393_CONF2, data);
 }
 
+bool Adafruit_MLX90393::startBurstMode(uint8_t axes) {
+  uint8_t tx[1] = {
+      static_cast<uint8_t>(MLX90393_REG_SB | axes),
+  };
+  return transceive(tx, sizeof(tx), NULL, 0, 0) == MLX90393_STATUS_OK;
+}
+
+bool Adafruit_MLX90393::setBurstRate(int delay_ms) {
+  const int delay_20ms = std::clamp(delay_ms / 20, 0, 0b111111);
+
+  uint16_t data;
+  if (!readRegister(MLX90393_CONF2, &data)) {
+    return false;
+  }
+
+  data &= ~0b111111;
+  data |= delay_20ms;
+
+  return writeRegister(MLX90393_CONF2, data);
+}
+
 /**
  * Begin a single measurement on all axes
  *
@@ -350,6 +371,61 @@ bool Adafruit_MLX90393::readMeasurement(float *x, float *y, float *z) {
   return true;
 }
 
+bool Adafruit_MLX90393::readMeasurement(uint8_t axes, std::span<float> result) {
+  if (axes & MLX90393_T) {
+    return false;
+  }
+  const int naxes = std::popcount(axes);
+  if (naxes > result.size()) {
+    return false;
+  }
+
+  std::array<uint8_t, 1> tx = {static_cast<uint8_t>(MLX90393_REG_RM | axes)};
+  std::array<uint8_t, 8> rx;
+  const int rxlen = 2 * naxes;
+  if (transceive(tx.data(), 1, rx.data(), rxlen, 0) != MLX90393_STATUS_OK) {
+    return false;
+  }
+
+  int result_index = 0;
+  std::span<const uint8_t> rx_span(rx);
+  for (auto axis : {MLX90393_X, MLX90393_Y, MLX90393_Z}) {
+    if ((axes & axis) == 0) {
+      continue;
+    }
+    const int16_t raw = (rx_span[0] << 8) | rx_span[1];
+    result[result_index++] = measurementToFloat(axis, raw);
+    rx_span = rx_span.subspan(2);
+  }
+  return true;
+}
+
+mlx90393_resolution Adafruit_MLX90393::resFromAxis(mlx90393_axis_t axis) const {
+  switch (axis) {
+    case MLX90393_X:
+      return _res_x;
+    case MLX90393_Y:
+      return _res_y;
+    case MLX90393_Z:
+      return _res_z;
+    default:
+      assert(false);
+      return _res_x;
+  }
+}
+
+float Adafruit_MLX90393::measurementToFloat(mlx90393_axis_t axis,
+                                            int16_t raw) const {
+  const mlx90393_resolution res = resFromAxis(axis);
+  if (res == MLX90393_RES_18) {
+    raw -= 0x8000;
+  } else if (res == MLX90393_RES_19) {
+    raw -= 0x4000;
+  }
+  const bool is_z = axis == MLX90393_Z;
+  return (float)raw * mlx90393_lsb_lookup[0][_gain][res][is_z];
+}
+
 /**
  * Performs a single X/Y/Z conversion and returns the results.
  *
@@ -368,6 +444,14 @@ bool Adafruit_MLX90393::readData(float *x, float *y, float *z) {
   // Without +10ms delay measurement doesn't always seem to work
   delay(mlx90393_tconv[_dig_filt][_osr] + 10);
   return readMeasurement(x, y, z);
+}
+
+bool Adafruit_MLX90393::readData(uint8_t axes, std::span<float> result) {
+  if (!startSingleMeasurement()) {
+    return false;
+  }
+  delay(mlx90393_tconv[_dig_filt][_osr] + 10);
+  return readMeasurement(axes, result);
 }
 
 bool Adafruit_MLX90393::writeRegister(uint8_t reg, uint16_t data) {

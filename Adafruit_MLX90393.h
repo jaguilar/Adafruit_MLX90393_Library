@@ -18,10 +18,14 @@
 #ifndef ADAFRUIT_MLX90393_H
 #define ADAFRUIT_MLX90393_H
 
-#include "Arduino.h"
 #include <Adafruit_I2CDevice.h>
 #include <Adafruit_SPIDevice.h>
 #include <Adafruit_Sensor.h>
+
+#include <cstdint>
+#include <span>
+
+#include "Arduino.h"
 
 #define MLX90393_DEFAULT_ADDR (0x0C) /* Can also be 0x18, depending on IC */
 
@@ -75,9 +79,12 @@ typedef enum mlx90393_resolution {
 
 /** Axis designator. */
 typedef enum mlx90393_axis {
-  MLX90393_X,
-  MLX90393_Y,
-  MLX90393_Z
+  MLX90393_X = 0b0010,
+  MLX90393_Y = 0b0100,
+  MLX90393_Z = 0b1000,
+  // Note that T is only partly supported because adafruit didn't implement it
+  // and I don't use it.
+  MLX90393_T = 0b0001,
 } mlx90393_axis_t;
 
 /** Digital filter settings for CONF3 register. */
@@ -179,7 +186,23 @@ public:
   bool exitMode(void);
 
   bool readMeasurement(float *x, float *y, float *z);
+
+  // Reads the measurement from any of the four axes. One value will be placed
+  // into result for each selected axis. If result is null or not properly sized
+  // for the number of axes selected, the function will return false. This will
+  // also return false if the T axis is selected, since we don't know how to
+  // interpret it as a float. Additionally, any hardware errors will also result
+  // in a false return value.
+  bool readMeasurement(uint8_t axes, std::span<float> result);
+
   bool startSingleMeasurement(void);
+
+  bool startBurstMode(uint8_t axes = MLX90393_AXIS_ALL);
+
+  // Sets the delay between each burst measurement. Only multiples of 20ms
+  // are supported directly, and the maximum delay is 2^7-1 * 20ms. Any value
+  // outside the allowed range will be clamped.
+  bool setBurstRate(int delay_ms);
 
   bool setGain(enum mlx90393_gain gain);
   enum mlx90393_gain getGain(void);
@@ -196,12 +219,17 @@ public:
   bool setTrigInt(bool state);
   bool readData(float *x, float *y, float *z);
 
+  bool readData(uint8_t axes, std::span<float> result);
+
   bool getEvent(sensors_event_t *event);
   void getSensor(sensor_t *sensor);
 
 private:
   Adafruit_I2CDevice *i2c_dev = NULL;
   Adafruit_SPIDevice *spi_dev = NULL;
+
+  mlx90393_resolution resFromAxis(mlx90393_axis_t axis) const;
+  float measurementToFloat(mlx90393_axis_t axis, int16_t raw) const;
 
   bool readRegister(uint8_t reg, uint16_t *data);
   bool writeRegister(uint8_t reg, uint16_t data);

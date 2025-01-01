@@ -36,11 +36,12 @@
 #define MLX90393_CONF4 (0x03)         /**< Sensitivty drift. */
 #define MLX90393_GAIN_SHIFT (4)       /**< Left-shift for gain bits. */
 #define MLX90393_HALL_CONF (0x0C)     /**< Hall plate spinning rate adj. */
-#define MLX90393_STATUS_OK (0x00)     /**< OK value for status response. */
-#define MLX90393_STATUS_SMMODE (0x08) /**< SM Mode status response. */
-#define MLX90393_STATUS_RESET (0x01)  /**< Reset value for status response. */
-#define MLX90393_STATUS_ERROR (0xFF)  /**< OK value for status response. */
-#define MLX90393_STATUS_MASK (0xFC)   /**< Mask for status OK checks. */
+#define MLX90393_STATUS_BURSTMODE (0b10000000)
+#define MLX90393_STATUS_WOC (0b01000000)
+#define MLX90393_STATUS_SMMODE (0b00100000)
+#define MLX90393_STATUS_RESET (0b00000100)
+#define MLX90393_STATUS_ERROR (0b00010000)
+#define MLX90393_STATUS_MASK (~MLX90393_STATUS_ERROR)
 
 /** Register map. */
 enum {

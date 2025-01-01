@@ -17,6 +17,8 @@
  *****************************************************************************/
 #include "Adafruit_MLX90393.h"
 
+#include <format>
+
 /**
  * Instantiates a new Adafruit_MLX90393 class instance
  */
@@ -114,7 +116,9 @@ bool Adafruit_MLX90393::exitMode(void) {
   uint8_t tx[1] = {MLX90393_REG_EX};
 
   /* Perform the transaction. */
-  return (transceive(tx, sizeof(tx), NULL, 0, 0) == MLX90393_STATUS_OK);
+  const uint8_t status = transceive(tx, sizeof(tx), NULL, 0, 0);
+  return (status & (MLX90393_STATUS_BURSTMODE | MLX90393_STATUS_SMMODE |
+                    MLX90393_STATUS_WOC | MLX90393_STATUS_ERROR)) == 0;
 }
 
 /**
@@ -293,7 +297,21 @@ bool Adafruit_MLX90393::startBurstMode(uint8_t axes) {
   uint8_t tx[1] = {
       static_cast<uint8_t>(MLX90393_REG_SB | axes),
   };
-  return transceive(tx, sizeof(tx), NULL, 0, 0) == MLX90393_STATUS_OK;
+  // Note that transceive "helpfully" shifts the status right by two bits.
+  // To allow looking at the status directly, we need to shift it back.
+  uint8_t status = transceive(tx, sizeof(tx), NULL, 0, 0);
+  if (!(status & MLX90393_STATUS_BURSTMODE)) {
+    Serial.print(
+        std::format("MLX90393 did not enter burst mode, status: {:#08b}\n",
+                    status)
+            .c_str());
+    return false;
+  }
+  if (status & 0b0001000) {
+    Serial.println("MLX90393 returned error entering burst mode");
+    return false;
+  }
+  return true;
 }
 
 bool Adafruit_MLX90393::setBurstRate(int delay_ms) {
@@ -320,7 +338,7 @@ bool Adafruit_MLX90393::startSingleMeasurement(void) {
 
   /* Set the device to single measurement mode */
   uint8_t stat = transceive(tx, sizeof(tx), NULL, 0, 0);
-  if ((stat == MLX90393_STATUS_OK) || (stat == MLX90393_STATUS_SMMODE)) {
+  if (!(stat & MLX90393_STATUS_ERROR) || (stat == MLX90393_STATUS_SMMODE)) {
     return true;
   }
   return false;
@@ -340,7 +358,7 @@ bool Adafruit_MLX90393::readMeasurement(float *x, float *y, float *z) {
   uint8_t rx[6] = {0};
 
   /* Read a single data sample. */
-  if (transceive(tx, sizeof(tx), rx, sizeof(rx), 0) != MLX90393_STATUS_OK) {
+  if (transceive(tx, sizeof(tx), rx, sizeof(rx), 0) & MLX90393_STATUS_ERROR) {
     return false;
   }
 
@@ -383,7 +401,7 @@ bool Adafruit_MLX90393::readMeasurement(uint8_t axes, std::span<float> result) {
   std::array<uint8_t, 1> tx = {static_cast<uint8_t>(MLX90393_REG_RM | axes)};
   std::array<uint8_t, 8> rx;
   const int rxlen = 2 * naxes;
-  if (transceive(tx.data(), 1, rx.data(), rxlen, 0) != MLX90393_STATUS_OK) {
+  if (transceive(tx.data(), 1, rx.data(), rxlen, 0) & MLX90393_STATUS_ERROR) {
     return false;
   }
 
@@ -462,7 +480,7 @@ bool Adafruit_MLX90393::writeRegister(uint8_t reg, uint16_t data) {
       (uint8_t)(reg << 2)};   // the register itself, shift up by 2 bits!
 
   /* Perform the transaction. */
-  return (transceive(tx, sizeof(tx), NULL, 0, 0) == MLX90393_STATUS_OK);
+  return !(transceive(tx, sizeof(tx), NULL, 0, 0) & MLX90393_STATUS_ERROR);
 }
 
 bool Adafruit_MLX90393::readRegister(uint8_t reg, uint16_t *data) {
@@ -473,7 +491,7 @@ bool Adafruit_MLX90393::readRegister(uint8_t reg, uint16_t *data) {
   uint8_t rx[2];
 
   /* Perform the transaction. */
-  if (transceive(tx, sizeof(tx), rx, sizeof(rx), 0) != MLX90393_STATUS_OK) {
+  if (transceive(tx, sizeof(tx), rx, sizeof(rx), 0) & MLX90393_STATUS_ERROR) {
     return false;
   }
 
@@ -547,8 +565,8 @@ uint8_t Adafruit_MLX90393::transceive(uint8_t *txbuf, uint8_t txlen,
     delay(interdelay);
   }
 
-  /* Mask out bytes available in the status response. */
-  return (status >> 2);
+  /* Mask out bytes available part of the status response. */
+  return status & ~0b11;
 }
 
 /**************************************************************************/

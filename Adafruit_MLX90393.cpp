@@ -33,46 +33,13 @@ Adafruit_MLX90393::Adafruit_MLX90393(void) {}
  *    @return True if initialization was successful, otherwise false.
  */
 bool Adafruit_MLX90393::begin_I2C(uint8_t i2c_addr, TwoWire *wire) {
-  if (i2c_dev) {
-    delete i2c_dev;
-  }
-
-  if (!i2c_dev) {
-    i2c_dev = new Adafruit_I2CDevice(i2c_addr, wire);
-  }
-  spi_dev = NULL;
-
-  if (!i2c_dev->begin()) {
-    return false;
-  }
-
-  return _init();
-}
-
-/*!
- *    @brief  Sets up the hardware and initializes hardware SPI
- *    @param  cs_pin The arduino pin # connected to chip select
- *    @param  theSPI The SPI object to be used for SPI connections.
- *    @return True if initialization was successful, otherwise false.
- */
-boolean Adafruit_MLX90393::begin_SPI(uint8_t cs_pin, SPIClass *theSPI) {
-  i2c_dev = NULL;
-  if (!spi_dev) {
-    _cspin = cs_pin;
-    spi_dev = new Adafruit_SPIDevice(cs_pin,
-                                     1000000,               // frequency
-                                     SPI_BITORDER_MSBFIRST, // bit order
-                                     SPI_MODE3,             // data mode
-                                     theSPI);
-  }
-  if (!spi_dev->begin()) {
-    return false;
-  }
+  _i2c_address = i2c_addr;
+  _i2c = wire;
+  wire->begin();
   return _init();
 }
 
 bool Adafruit_MLX90393::_init(void) {
-
   if (!exitMode())
     return false;
 
@@ -197,6 +164,9 @@ bool Adafruit_MLX90393::setResolution(enum mlx90393_axis axis,
     data &= ~0x0600;
     data |= resolution << 9;
     break;
+  default:
+    assert(false);
+    return false;  // Not implemented yet.
   }
 
   return writeRegister(MLX90393_CONF3, data);
@@ -216,9 +186,11 @@ Adafruit_MLX90393::getResolution(enum mlx90393_axis axis) {
     return _res_y;
   case MLX90393_Z:
     return _res_z;
+  case MLX90393_T:
+    assert(false);
+    return _res_x;
   }
-  // shouldn't get here, but to make compiler happy...
-  return _res_x;
+  return _res_x;  // I guess?
 }
 
 /**
@@ -500,26 +472,6 @@ bool Adafruit_MLX90393::readRegister(uint8_t reg, uint16_t *data) {
   return true;
 }
 
-/**************************************************************************/
-/*!
-    @brief  Gets the most recent sensor event, Adafruit Unified Sensor format
-    @param  event Pointer to an Adafruit Unified sensor_event_t object that
-   we'll fill in
-    @returns True on successful read
-*/
-/**************************************************************************/
-bool Adafruit_MLX90393::getEvent(sensors_event_t *event) {
-  /* Clear the event */
-  memset(event, 0, sizeof(sensors_event_t));
-
-  event->version = 1;
-  event->sensor_id = _sensorID;
-  event->type = SENSOR_TYPE_MAGNETIC_FIELD;
-  event->timestamp = millis();
-
-  return readData(&event->magnetic.x, &event->magnetic.y, &event->magnetic.z);
-}
-
 /**
  * Performs a full read/write transaction with the sensor.
  *
@@ -539,55 +491,27 @@ uint8_t Adafruit_MLX90393::transceive(uint8_t *txbuf, uint8_t txlen,
   uint8_t i;
   uint8_t rxbuf2[rxlen + 2];
 
-  if (i2c_dev) {
-    /* Write stage */
-    if (!i2c_dev->write(txbuf, txlen)) {
-      return MLX90393_STATUS_ERROR;
-    }
-    delay(interdelay);
+  /* Write stage */
 
-    /* Read status byte plus any others */
-    if (!i2c_dev->read(rxbuf2, rxlen + 1)) {
-      return MLX90393_STATUS_ERROR;
-    }
-    status = rxbuf2[0];
-    for (i = 0; i < rxlen; i++) {
-      rxbuf[i] = rxbuf2[i + 1];
-    }
+  _i2c->beginTransmission(_i2c_address);
+  _i2c->write(txbuf, txlen);
+  if (_i2c->endTransmission() != 0) {
+    return MLX90393_STATUS_ERROR;
+  }
+  delay(interdelay);
+
+  /* Read status byte plus any others */
+  uint8_t rxlen1 = rxlen + 1;
+  if (_i2c->requestFrom(_i2c_address, rxlen1) != rxlen1 ||
+      _i2c->readBytes(rxbuf2, rxlen1) != rxlen1) {
+    return MLX90393_STATUS_ERROR;
   }
 
-  if (spi_dev) {
-    spi_dev->write_then_read(txbuf, txlen, rxbuf2, rxlen + 1, 0x00);
-    status = rxbuf2[0];
-    for (i = 0; i < rxlen; i++) {
-      rxbuf[i] = rxbuf2[i + 1];
-    }
-    delay(interdelay);
+  status = rxbuf2[0];
+  for (i = 0; i < rxlen; i++) {
+    rxbuf[i] = rxbuf2[i + 1];
   }
 
   /* Mask out bytes available part of the status response. */
   return status & ~0b11;
-}
-
-/**************************************************************************/
-/*!
-    @brief  Gets the sensor_t device data, Adafruit Unified Sensor format
-    @param  sensor Pointer to an Adafruit Unified sensor_t object that we'll
-   fill in
-*/
-/**************************************************************************/
-void Adafruit_MLX90393::getSensor(sensor_t *sensor) {
-  /* Clear the sensor_t object */
-  memset(sensor, 0, sizeof(sensor_t));
-
-  /* Insert the sensor name in the fixed length char array */
-  strncpy(sensor->name, "MLX90393", sizeof(sensor->name) - 1);
-  sensor->name[sizeof(sensor->name) - 1] = 0;
-  sensor->version = 1;
-  sensor->sensor_id = _sensorID;
-  sensor->type = SENSOR_TYPE_MAGNETIC_FIELD;
-  sensor->min_delay = 0;
-  sensor->min_value = -50000; // -50 gauss in uTesla
-  sensor->max_value = 50000;  // +50 gauss in uTesla
-  sensor->resolution = 0.15;  // 100/16-bit uTesla per LSB
 }

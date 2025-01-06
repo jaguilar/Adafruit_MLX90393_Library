@@ -18,14 +18,11 @@
 #ifndef ADAFRUIT_MLX90393_H
 #define ADAFRUIT_MLX90393_H
 
-#include <Adafruit_I2CDevice.h>
-#include <Adafruit_SPIDevice.h>
-#include <Adafruit_Sensor.h>
-
 #include <cstdint>
 #include <span>
 
 #include "Arduino.h"
+#include "Wire.h"
 
 #define MLX90393_DEFAULT_ADDR (0x0C) /* Can also be 0x18, depending on IC */
 
@@ -176,12 +173,11 @@ const float mlx90393_tconv[8][4] = {
 /**
  * Driver for the Adafruit MLX90393 magnetometer breakout board.
  */
-class Adafruit_MLX90393 : public Adafruit_Sensor {
-public:
+class Adafruit_MLX90393 {
+ public:
   Adafruit_MLX90393();
   bool begin_I2C(uint8_t i2c_addr = MLX90393_DEFAULT_ADDR,
                  TwoWire *wire = &Wire);
-  bool begin_SPI(uint8_t cs_pin, SPIClass *theSPI = &SPI);
 
   bool reset(void);
   bool exitMode(void);
@@ -222,13 +218,7 @@ public:
 
   bool readData(uint8_t axes, std::span<float> result);
 
-  bool getEvent(sensors_event_t *event);
-  void getSensor(sensor_t *sensor);
-
-private:
-  Adafruit_I2CDevice *i2c_dev = NULL;
-  Adafruit_SPIDevice *spi_dev = NULL;
-
+ private:
   mlx90393_resolution resFromAxis(mlx90393_axis_t axis) const;
   float measurementToFloat(mlx90393_axis_t axis, int16_t raw) const;
 
@@ -243,6 +233,8 @@ private:
   enum mlx90393_filter _dig_filt;
   enum mlx90393_oversampling _osr;
 
+  TwoWire *_i2c = nullptr;
+  uint8_t _i2c_address = 0;
   int32_t _sensorID = 90393;
   int _cspin;
 };

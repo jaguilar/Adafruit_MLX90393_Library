@@ -108,7 +108,7 @@ bool Adafruit_MLX90393::reset(void) {
 bool Adafruit_MLX90393::setGain(mlx90393_gain_t gain) {
   _gain = gain;
 
-  uint16_t data;
+  uint16_t data = 0;
   readRegister(MLX90393_CONF1, &data);
 
   // mask off gain bits
@@ -125,7 +125,7 @@ bool Adafruit_MLX90393::setGain(mlx90393_gain_t gain) {
  * @return An enum containing the current gain level.
  */
 mlx90393_gain_t Adafruit_MLX90393::getGain(void) {
-  uint16_t data;
+  uint16_t data = 0;
   readRegister(MLX90393_CONF1, &data);
 
   // mask off gain bits
@@ -142,8 +142,7 @@ mlx90393_gain_t Adafruit_MLX90393::getGain(void) {
  */
 bool Adafruit_MLX90393::setResolution(enum mlx90393_axis axis,
                                       enum mlx90393_resolution resolution) {
-
-  uint16_t data;
+  uint16_t data = 0;
   readRegister(MLX90393_CONF3, &data);
 
   switch (axis) {
@@ -199,7 +198,7 @@ Adafruit_MLX90393::getResolution(enum mlx90393_axis axis) {
 bool Adafruit_MLX90393::setFilter(enum mlx90393_filter filter) {
   _dig_filt = filter;
 
-  uint16_t data;
+  uint16_t data = 0;
   readRegister(MLX90393_CONF3, &data);
 
   data &= ~0x1C;
@@ -223,7 +222,7 @@ bool Adafruit_MLX90393::setOversampling(
     enum mlx90393_oversampling oversampling) {
   _osr = oversampling;
 
-  uint16_t data;
+  uint16_t data = 0;
   readRegister(MLX90393_CONF3, &data);
 
   data &= ~0x03;
@@ -248,7 +247,7 @@ enum mlx90393_oversampling Adafruit_MLX90393::getOversampling(void) {
  * @return True if the operation succeeded, otherwise false.
  */
 bool Adafruit_MLX90393::setTrigInt(bool state) {
-  uint16_t data;
+  uint16_t data = 0;
   readRegister(MLX90393_CONF2, &data);
 
   // mask off trigint bit
@@ -282,7 +281,7 @@ bool Adafruit_MLX90393::startBurstMode(uint8_t axes) {
 bool Adafruit_MLX90393::setBurstRate(int delay_ms) {
   const int delay_20ms = std::clamp(delay_ms / 20, 0, 0b111111);
 
-  uint16_t data;
+  uint16_t data = 0;
   if (!readRegister(MLX90393_CONF2, &data)) {
     return false;
   }

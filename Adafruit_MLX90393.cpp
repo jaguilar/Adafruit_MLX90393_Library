@@ -17,8 +17,6 @@
  *****************************************************************************/
 #include "Adafruit_MLX90393.h"
 
-#include <format>
-
 /**
  * Instantiates a new Adafruit_MLX90393 class instance
  */
@@ -273,14 +271,9 @@ bool Adafruit_MLX90393::startBurstMode(uint8_t axes) {
   // To allow looking at the status directly, we need to shift it back.
   uint8_t status = transceive(tx, sizeof(tx), NULL, 0, 0);
   if (!(status & MLX90393_STATUS_BURSTMODE)) {
-    Serial.print(
-        std::format("MLX90393 did not enter burst mode, status: {:#08b}\n",
-                    status)
-            .c_str());
     return false;
   }
   if (status & 0b0001000) {
-    Serial.println("MLX90393 returned error entering burst mode");
     return false;
   }
   return true;
